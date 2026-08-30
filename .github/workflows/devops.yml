@@ -21,6 +21,11 @@ jobs:
           test -d k8s
           echo "Project structure OK"
 
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: latest
+
       - name: Terraform format check
         run: |
           terraform fmt -check -recursive terraform
