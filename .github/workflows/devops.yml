@@ -1,0 +1,32 @@
+name: DevOps Validation
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check project structure
+        run: |
+          test -f Dockerfile
+          test -f docker-compose.yml
+          test -f terraform/main.tf
+          test -d k8s
+          echo "Project structure OK"
+
+      - name: Terraform format check
+        run: |
+          terraform fmt -check -recursive terraform
+
+      - name: Terraform validate
+        working-directory: terraform
+        run: |
+          terraform init -backend=false
+          terraform validate

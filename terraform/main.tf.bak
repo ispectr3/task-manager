@@ -1,0 +1,76 @@
+terraform {
+  required_providers {
+helm = {
+      source  = "hashicorp/helm"
+      version = "2.17.0"
+    }
+
+    kubernetes = {
+      source = "hashicorp/kubernetes"
+    }
+
+    null = {
+      source = "hashicorp/null"
+    }
+  }
+}
+
+resource "null_resource" "k3d_cluster" {
+  provisioner "local-exec" {
+    command = <<-EOT
+      k3d cluster create task-manager \
+        --image rancher/k3s:v1.31.5-k3s1 \
+        --servers 1 \
+        --agents 1 \
+        -p "8081:80@loadbalancer"
+    EOT
+  }
+
+  provisioner "local-exec" {
+    when    = destroy
+    command = "k3d cluster delete task-manager || true"
+  }
+}
+
+resource "null_resource" "wait_for_cluster" {
+  depends_on = [null_resource.k3d_cluster]
+
+  provisioner "local-exec" {
+    command = "kubectl wait --for=condition=Ready nodes --all --timeout=120s"
+  }
+}
+
+resource "kubernetes_namespace_v1" "monitoring" {
+  depends_on = [null_resource.wait_for_cluster]
+
+  metadata {
+    name = "monitoring"
+  }
+}
+
+resource "helm_release" "monitoring" {
+  depends_on = [kubernetes_namespace_v1.monitoring]
+
+  name       = "monitoring"
+  namespace  = "monitoring"
+  repository = "https://prometheus-community.github.io/helm-charts"
+  chart      = "kube-prometheus-stack"
+
+  timeout = 600
+}
+
+resource "helm_release" "loki" {
+  depends_on = [helm_release.monitoring]
+
+  name       = "loki"
+  namespace  = "monitoring"
+  repository = "https://grafana.github.io/helm-charts"
+  chart      = "loki-stack"
+
+  timeout = 600
+
+  set = [{
+    name  = "loki.image.tag"
+    value = "2.9.3"
+  }]
+}
